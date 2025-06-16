@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/godror/godror"
@@ -22,6 +24,14 @@ var (
 	checkInterval   = getEnvAsInt("CHECK_INTERVAL_SECONDS", 60)
 	db              *sql.DB
 	healthPort      = getEnvAsInt("HEALTH_PORT", 8080)
+
+	// 告警记录，key为任务ID，value为最后告警时间
+	alertRecords = struct {
+		sync.RWMutex
+		records map[string]time.Time
+	}{
+		records: make(map[string]time.Time),
+	}
 )
 
 func initDB() error {
@@ -103,12 +113,47 @@ func main() {
 	}
 }
 
+// isWorkingHours 检查当前时间是否在工作时间内（9:00-21:00）
+func isWorkingHours() bool {
+	now := time.Now()
+	hour := now.Hour()
+	return hour >= 9 && hour < 21
+}
+
+// shouldAlert 检查是否应该发送告警
+func shouldAlert(taskID string) bool {
+	alertRecords.RLock()
+	lastAlertTime, exists := alertRecords.records[taskID]
+	alertRecords.RUnlock()
+
+	if !exists {
+		return true
+	}
+
+	// 如果上次告警时间在10分钟内，则不再发送
+	return time.Since(lastAlertTime) > 10*time.Minute
+}
+
+// updateAlertRecord 更新告警记录
+func updateAlertRecord(taskID string) {
+	alertRecords.Lock()
+	now := time.Now()
+	alertRecords.records[taskID] = now
+	// 清理超过1小时未告警的taskID
+	for k, t := range alertRecords.records {
+		if now.Sub(t) > time.Hour {
+			delete(alertRecords.records, k)
+		}
+	}
+	alertRecords.Unlock()
+}
+
 func checkAndAlert() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	query := `
-        SELECT CREATE_TIME 
+        SELECT CREATE_TIME, TASK_ID 
         FROM FLOWABLE_USER.T_CURRENT_TASK
         WHERE 
             CREATE_TIME >= TRUNC(SYSDATE) - 6
@@ -130,9 +175,16 @@ func checkAndAlert() {
 	timeoutTasks := 0
 	timeoutDuration := time.Duration(timeoutMinutes) * time.Minute
 
+	type TaskInfo struct {
+		CreateTime time.Time
+		TaskID     string
+	}
+	var timeoutTaskList []TaskInfo
+
 	for rows.Next() {
 		var createTime time.Time
-		if err := rows.Scan(&createTime); err != nil {
+		var taskID string
+		if err := rows.Scan(&createTime, &taskID); err != nil {
 			log.Printf("结果解析失败: %v\n", err)
 			continue
 		}
@@ -140,6 +192,10 @@ func checkAndAlert() {
 		totalTasks++
 		if now.Sub(createTime) > timeoutDuration {
 			timeoutTasks++
+			timeoutTaskList = append(timeoutTaskList, TaskInfo{
+				CreateTime: createTime,
+				TaskID:     taskID,
+			})
 		}
 	}
 
@@ -149,8 +205,31 @@ func checkAndAlert() {
 	}
 
 	if timeoutTasks > 0 {
-		msg := fmt.Sprintf("您有 [%d] 条【商户入网审核 4.0】入网审核流程待处理，且有 [%d] 条超时未处理，请尽快操作。", totalTasks, timeoutTasks)
-		sendWeComAlert(msg)
+		if isWorkingHours() {
+			// 过滤需要告警的任务
+			var alertTasks []TaskInfo
+			for _, task := range timeoutTaskList {
+				if shouldAlert(task.TaskID) {
+					alertTasks = append(alertTasks, task)
+					updateAlertRecord(task.TaskID)
+				}
+			}
+
+			if len(alertTasks) > 0 {
+				taskIDs := make([]string, 0, len(alertTasks))
+				for _, t := range alertTasks {
+					taskIDs = append(taskIDs, fmt.Sprintf("<font color=\"blue\">%s</font>", t.TaskID))
+				}
+				taskIDStr := strings.Join(taskIDs, ",")
+				msg := fmt.Sprintf("您有 [<font color=\"red\">%d</font>] 条【商户入网审核 4.0】入网审核流程待处理，且有 [<font color=\"red\">%d</font>] 条超时未处理，正在告警的有 [<font color=\"red\">%d</font>] 条。taskid为%s", totalTasks, timeoutTasks, len(alertTasks), taskIDStr)
+				sendWeComAlertMarkdown(msg)
+			} else {
+				log.Println("所有超时任务都在告警屏蔽期内，暂不发送告警。")
+			}
+		} else {
+			log.Printf("当前时间 %s 非工作时间（9:00-21:00），暂不发送告警。", now.Format("15:04:05"))
+			time.Sleep(20 * time.Minute)
+		}
 	} else {
 		log.Println("当前无待处理任务。")
 	}
@@ -160,6 +239,30 @@ func sendWeComAlert(content string) {
 	payload := map[string]interface{}{
 		"msgtype": "text",
 		"text": map[string]string{
+			"content": content,
+		},
+	}
+	data, _ := json.Marshal(payload)
+
+	resp, err := http.Post(wecomWebhookURL, "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		log.Printf("发送告警失败: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("企业微信返回状态异常: %s\n", resp.Status)
+	} else {
+		log.Println("告警已发送。")
+	}
+}
+
+// 新增markdown告警函数
+func sendWeComAlertMarkdown(content string) {
+	payload := map[string]interface{}{
+		"msgtype": "markdown",
+		"markdown": map[string]string{
 			"content": content,
 		},
 	}
