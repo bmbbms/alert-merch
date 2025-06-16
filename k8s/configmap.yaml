@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oracle-secret
+type: Opaque
+stringData:
+  dsn: "your_user/your_password@your_host:1521/your_service"  # ← 替换成实际 Oracle DSN
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wecom-secret
+type: Opaque
+stringData:
+  webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" 

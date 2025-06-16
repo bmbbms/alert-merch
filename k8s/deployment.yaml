@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-merch
+  namespace: monitoring
+  labels:
+    app: alert-merch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-merch
+  template:
+    metadata:
+      labels:
+        app: alert-merch
+    spec:
+      containers:
+      - name: alert-merch
+        image: your-docker-image:latest # ← 替换为你构建推送到镜像仓库的镜像名
+        imagePullPolicy: Always
+        env:
+        - name: ORACLE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: oracle-secret
+              key: dsn
+        - name: WECOM_WEBHOOK
+          valueFrom:
+            secretKeyRef:
+              name: wecom-secret
+              key: webhook
+        - name: TASK_TIMEOUT_MINUTES
+          value: "3"
+        - name: CHECK_INTERVAL_SECONDS
+          value: "60"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 60
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
