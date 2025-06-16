@@ -1,5 +1,5 @@
 # 构建阶段
-FROM registry.jlpay.com/middleware/golang-ora:1.22.0 AS builder
+FROM registry.jlpay.com/middleware/golang-ora:1.23.0 AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o alert-merch main.go
 
 # 运行阶段
-FROM registry.jlpay.com/middleware/golang-ora:1.22.0
+FROM registry.jlpay.com/middleware/golang-ora:1.23.0
 
 WORKDIR /app
 
