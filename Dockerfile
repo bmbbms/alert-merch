@@ -20,7 +20,7 @@ RUN go mod download
 COPY . .
 
 # 构建应用
-RUN CGO_ENABLED=0 GOOS=linux go build -o alert-merch main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -o alert-merch main.go
 
 # 运行阶段
 FROM registry.jlpay.com/middleware/golang-ora:1.23.0
