@@ -43,6 +43,9 @@ var (
 	}{
 		records: make(map[string]time.Time),
 	}
+
+	checkDailyStatsDone    bool
+	checkDailyStatsDoneDay int
 )
 
 // 超时任务记录
@@ -176,6 +179,8 @@ func updateUnfinishedAlertRecord(taskID string) {
 
 // checkTasks 检查所有任务状态
 func checkTasks(ctx context.Context) {
+
+	log.Printf("开始查询任务:\n")
 	query := `
 		SELECT TASK_ID, CREATE_TIME, 
 		       CASE WHEN ASSIGNEE IS NULL AND ASSIGNEE_ID IS NULL THEN 'unclaimed' ELSE 'unfinished' END as TASK_STATUS
@@ -235,8 +240,13 @@ func checkTasks(ctx context.Context) {
 		}
 
 		if len(alertTasks) > 0 {
-			msg := fmt.Sprintf("【超时提醒】超时未领取\n您有<font color=\"red\">%d</font>条新的商户入网审核流程超时未领取，当前累计超时未领取审核流程共 <font color=\"red\">%d</font> 条，请尽快操作。",
-				len(alertTasks), len(timeoutTasks.tasks))
+			taskIDs := make([]string, 0, len(alertTasks))
+			for _, t := range alertTasks {
+				taskIDs = append(taskIDs, fmt.Sprintf("<font color=\"blue\">%s</font>", t.TaskID))
+			}
+			taskIDStr := strings.Join(taskIDs, "\n")
+			msg := fmt.Sprintf("【超时提醒】超时未领取\n您有<font color=\"red\">%d</font>条新的商户入网审核流程超时未领取，当前累计超时未领取审核流程共 <font color=\"red\">%d</font> 条，请尽快操作。流程清单：%s",
+				len(alertTasks), len(timeoutTasks.tasks), taskIDStr)
 			sendWeComAlertMarkdown(msg, wecomWebhookURL)
 		}
 	}
@@ -256,9 +266,9 @@ func checkTasks(ctx context.Context) {
 			for _, t := range alertTasks {
 				taskIDs = append(taskIDs, fmt.Sprintf("<font color=\"blue\">%s</font>", t.TaskID))
 			}
-			taskIDStr := strings.Join(taskIDs, ",")
+			taskIDStr := strings.Join(taskIDs, "\n")
 
-			msg := fmt.Sprintf("【超时提醒】超时未完成\n您有<font color=\"red\">%d</font>条新的商户入网审核流程已领取但审核超时，当前累计审核超时流程共 <font color=\"red\">%d</font> 条，请尽快操作。\n商户清单：%s",
+			msg := fmt.Sprintf("【超时提醒】超时未完成\n您有<font color=\"red\">%d</font>条新的商户入网审核流程已领取但审核超时，当前累计审核超时流程共 <font color=\"red\">%d</font> 条，请尽快操作。\n流程清单：%s",
 				len(alertTasks), len(timeoutFinishTasks.tasks), taskIDStr)
 			sendWeComAlertMarkdown(msg, wecomWebhookURL2)
 		}
@@ -269,71 +279,60 @@ func checkAndAlert() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	// 检查每日统计（仅在9点执行）
+	checkDailyStats(ctx)
+
 	// 检查所有任务状态
 	checkTasks(ctx)
 
-	// 检查每日统计（仅在9点执行）
-	checkDailyStats(ctx)
 }
 
 // checkDailyStats 检查每日统计
 func checkDailyStats(ctx context.Context) {
 	now := time.Now()
-	if now.Hour() == 9 && now.Minute() == 0 {
+	currentDay := now.YearDay()
+
+	// 每天0点重置标志
+	if checkDailyStatsDoneDay != currentDay {
+		checkDailyStatsDone = false
+		checkDailyStatsDoneDay = currentDay
+	}
+
+	if now.Hour() == 9 && now.Minute() < 5 && !checkDailyStatsDone {
 		// 统计未完成任务数量
 		totalTimeout := 0
+		log.Printf("开始每日统计，当前时间: %s", now.Format("2006-01-02 15:04:05"))
 		timeoutFinishTasks.RLock()
 		for _, task := range timeoutFinishTasks.tasks {
 			if task.CreateTime.Before(now) && task.CreateTime.After(now.Add(-24*time.Hour)) {
-				if task.CreateTime.Hour() < 21 && task.CreateTime.Hour() > 8 { // 排除21:00后和9:00前创建的记录
+				if task.CreateTime.Hour() < 21 && task.CreateTime.Hour() > 8 {
 					totalTimeout++
 				}
 			}
 		}
 		timeoutFinishTasks.RUnlock()
 
-		// 发送每日统计
 		msg := fmt.Sprintf("【每日统计】\n昨日（%s）共有 <font color=\"red\">%d</font> 条商户入网审核流程超时未完成。",
 			now.Add(-24*time.Hour).Format("2006-01-02"), totalTimeout)
 		sendWeComAlertMarkdown(msg, wecomWebhookURL3)
 
-		// 清理超时任务列表
 		cleanupTimeoutTasks()
+		checkDailyStatsDone = true
+		log.Printf("每日统计已完成，今日不会重复执行")
 	}
 }
 
 // cleanupTimeoutTasks 清理超时任务列表
 func cleanupTimeoutTasks() {
-	now := time.Now()
-	cleanupTime := now.Add(-1 * 24 * time.Hour) // 清理1天前的记录
-
-	// 清理未分配超时任务
 	timeoutTasks.Lock()
-	for taskID, task := range timeoutTasks.tasks {
-		if task.CreateTime.Before(cleanupTime) {
-			delete(timeoutTasks.tasks, taskID)
-			// 同时清理对应的告警记录
-			alertRecords.Lock()
-			delete(alertRecords.records, taskID)
-			alertRecords.Unlock()
-		}
-	}
+	timeoutTasks.tasks = make(map[string]TaskInfo)
 	timeoutTasks.Unlock()
 
-	// 清理未完成超时任务
 	timeoutFinishTasks.Lock()
-	for taskID, task := range timeoutFinishTasks.tasks {
-		if task.CreateTime.Before(cleanupTime) {
-			delete(timeoutFinishTasks.tasks, taskID)
-			// 同时清理对应的告警记录
-			unfinishedAlertRecords.Lock()
-			delete(unfinishedAlertRecords.records, taskID)
-			unfinishedAlertRecords.Unlock()
-		}
-	}
+	timeoutFinishTasks.tasks = make(map[string]TaskInfo)
 	timeoutFinishTasks.Unlock()
 
-	log.Printf("已清理1天前的超时任务记录")
+	log.Printf("已清空所有超时任务记录，开始新一天的统计")
 }
 
 func sendWeComAlertMarkdown(content string, webhookURL string) {
