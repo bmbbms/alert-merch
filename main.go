@@ -245,8 +245,8 @@ func checkTasks(ctx context.Context) {
 				taskIDs = append(taskIDs, fmt.Sprintf("<font color=\"blue\">%s</font>", t.TaskID))
 			}
 			taskIDStr := strings.Join(taskIDs, "\n")
-			msg := fmt.Sprintf("【超时提醒】超时未领取\n您有<font color=\"red\">%d</font>条新的商户入网审核流程超时未领取，当前累计超时未领取审核流程共 <font color=\"red\">%d</font> 条，请尽快操作。流程清单：%s",
-				len(alertTasks), len(timeoutTasks.tasks), taskIDStr)
+			msg := fmt.Sprintf("【超时提醒】超时未领取\n您有<font color=\"red\">%d</font>条新的商户入网审核流程超时未领取，当前超时未领取审核流程总共 <font color=\"red\">%d</font> 条，当天累计超时未领取审核流程共 <font color=\"red\">%d</font> 条，请尽快操作。流程清单：%s",
+				len(alertTasks), len(unclaimedTasks), len(timeoutTasks.tasks), taskIDStr)
 			sendWeComAlertMarkdown(msg, wecomWebhookURL)
 		}
 	}
@@ -268,8 +268,8 @@ func checkTasks(ctx context.Context) {
 			}
 			taskIDStr := strings.Join(taskIDs, "\n")
 
-			msg := fmt.Sprintf("【超时提醒】超时未完成\n您有<font color=\"red\">%d</font>条新的商户入网审核流程已领取但审核超时，当前累计审核超时流程共 <font color=\"red\">%d</font> 条，请尽快操作。\n流程清单：%s",
-				len(alertTasks), len(timeoutFinishTasks.tasks), taskIDStr)
+			msg := fmt.Sprintf("【超时提醒】超时未完成\n您有<font color=\"red\">%d</font>条新的商户入网审核流程已领取但审核超时，当前审核超时流程总共 <font color=\"red\">%d</font> 条,当天累计审核超时流程共 <font color=\"red\">%d</font> 条，请尽快操作。\n流程清单：%s",
+				len(alertTasks), len(unfinishedTasks), len(timeoutFinishTasks.tasks), taskIDStr)
 			sendWeComAlertMarkdown(msg, wecomWebhookURL2)
 		}
 	}
