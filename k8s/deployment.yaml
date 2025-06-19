@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: alert-merch
-        image: your-docker-image:latest # ← 替换为你构建推送到镜像仓库的镜像名
+        image: registry.jlpay.com/middleware/alert-merch:v1.4 # ← 替换为你构建推送到镜像仓库的镜像名
         imagePullPolicy: Always
         env:
         - name: ORACLE_DSN
@@ -30,26 +30,51 @@ spec:
             secretKeyRef:
               name: wecom-secret
               key: webhook
+        - name: WECOM_WEBHOOK2
+          valueFrom:
+            secretKeyRef:
+              name: wecom-secret
+              key: webhook2
+        - name: WECOM_WEBHOOK3
+          valueFrom:
+            secretKeyRef:
+              name: wecom-secret
+              key: webhook3
+        - name: PERSIST_PATH
+          value: "/app/data"
         - name: TASK_TIMEOUT_MINUTES
           value: "3"
         - name: CHECK_INTERVAL_SECONDS
-          value: "60"
+          value: "10"
+        - name: UNFINISHED_TIMEOUT_MINUTES
+          value: "10"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
         resources:
           requests:
             cpu: "100m"
             memory: "128Mi"
           limits:
-            cpu: "500m"
-            memory: "256Mi"
+            cpu: "2"
+            memory: "2Gi"
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /health/live
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 60
         readinessProbe:
           httpGet:
-            path: /healthz
+            path: /health/ready
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 30
+      nodeSelector:
+        oteltype: loadbalancer
+      volumes:
+      - hostPath:
+          path: /data/alert-merch
+          type: DirectoryOrCreate
+        name: data-volume
+

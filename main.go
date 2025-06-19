@@ -6,15 +6,23 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	_ "github.com/godror/godror"
+)
+
+const (
+	timeoutTasksFile       = "timeout_tasks.json"
+	timeoutFinishTasksFile = "timeout_finish_tasks.json"
 )
 
 var (
@@ -46,6 +54,7 @@ var (
 
 	checkDailyStatsDone    bool
 	checkDailyStatsDoneDay int
+	lastSaveTime           time.Time // 上次保存时间
 )
 
 // 超时任务记录
@@ -53,6 +62,49 @@ var (
 type TimeoutTasks struct {
 	tasks map[string]TaskInfo
 	sync.RWMutex
+}
+
+// SaveToFile 保存到文件
+func (tt *TimeoutTasks) SaveToFile(filename string) error {
+	tt.RLock()
+	defer tt.RUnlock()
+
+	data, err := json.MarshalIndent(tt.tasks, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化数据失败: %v", err)
+	}
+
+	err = ioutil.WriteFile(filename, data, 0644)
+	if err != nil {
+		return fmt.Errorf("写入文件失败: %v", err)
+	}
+
+	log.Printf("已保存超时任务数据到文件: %s", filename)
+	return nil
+}
+
+// LoadFromFile 从文件加载
+func (tt *TimeoutTasks) LoadFromFile(filename string) error {
+	tt.Lock()
+	defer tt.Unlock()
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("文件不存在，使用空数据: %s", filename)
+			tt.tasks = make(map[string]TaskInfo)
+			return nil
+		}
+		return fmt.Errorf("读取文件失败: %v", err)
+	}
+
+	err = json.Unmarshal(data, &tt.tasks)
+	if err != nil {
+		return fmt.Errorf("反序列化数据失败: %v", err)
+	}
+
+	log.Printf("已从文件加载超时任务数据: %s，共 %d 条记录", filename, len(tt.tasks))
+	return nil
 }
 
 var (
@@ -285,6 +337,12 @@ func checkAndAlert() {
 	// 检查所有任务状态
 	checkTasks(ctx)
 
+	// 定期保存数据
+	now := time.Now()
+	if now.Sub(lastSaveTime) > 10*time.Minute {
+		saveAllTimeoutTasks()
+		lastSaveTime = now
+	}
 }
 
 // checkDailyStats 检查每日统计
@@ -335,6 +393,44 @@ func cleanupTimeoutTasks() {
 	log.Printf("已清空所有超时任务记录，开始新一天的统计")
 }
 
+// saveAllTimeoutTasks 保存所有超时任务数据
+func saveAllTimeoutTasks() {
+	log.Println("正在保存超时任务数据...")
+
+	// 确保目录存在
+	basePath := os.Getenv("PERSIST_PATH")
+	if basePath != "" {
+		if err := os.MkdirAll(basePath, 0755); err != nil {
+			log.Printf("创建持久化目录失败: %v", err)
+		}
+	}
+
+	if err := timeoutTasks.SaveToFile(getPersistPath(timeoutTasksFile)); err != nil {
+		log.Printf("保存timeoutTasks失败: %v", err)
+	}
+
+	if err := timeoutFinishTasks.SaveToFile(getPersistPath(timeoutFinishTasksFile)); err != nil {
+		log.Printf("保存timeoutFinishTasks失败: %v", err)
+	}
+
+	log.Println("超时任务数据保存完成")
+}
+
+// loadAllTimeoutTasks 加载所有超时任务数据
+func loadAllTimeoutTasks() {
+	log.Println("正在加载超时任务数据...")
+
+	if err := timeoutTasks.LoadFromFile(getPersistPath(timeoutTasksFile)); err != nil {
+		log.Printf("加载timeoutTasks失败: %v", err)
+	}
+
+	if err := timeoutFinishTasks.LoadFromFile(getPersistPath(timeoutFinishTasksFile)); err != nil {
+		log.Printf("加载timeoutFinishTasks失败: %v", err)
+	}
+
+	log.Println("超时任务数据加载完成")
+}
+
 func sendWeComAlertMarkdown(content string, webhookURL string) {
 	payload := map[string]interface{}{
 		"msgtype": "markdown",
@@ -367,8 +463,23 @@ func getEnvAsInt(key string, defaultVal int) int {
 	return defaultVal
 }
 
+// 获取持久化文件路径
+func getPersistPath(filename string) string {
+	basePath := os.Getenv("PERSIST_PATH")
+	if basePath == "" {
+		basePath = "." // 默认当前目录
+	}
+	return fmt.Sprintf("%s/%s", basePath, filename)
+}
+
 func main() {
 	log.Println("启动定时任务监控程序...")
+
+	// 加载持久化的超时任务数据
+	loadAllTimeoutTasks()
+
+	// 初始化上次保存时间
+	lastSaveTime = time.Now()
 
 	// 初始化数据库连接
 	if err := initDB(); err != nil {
@@ -379,6 +490,10 @@ func main() {
 	// 启动健康检查服务器
 	go startHealthServer()
 
+	// 设置信号处理，用于优雅关闭
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
 	ticker := time.NewTicker(time.Duration(checkInterval) * time.Second)
 	defer ticker.Stop()
 
@@ -386,6 +501,12 @@ func main() {
 		select {
 		case <-ticker.C:
 			checkAndAlert()
+		case sig := <-sigChan:
+			log.Printf("收到信号 %v，正在优雅关闭...", sig)
+			// 保存数据
+			saveAllTimeoutTasks()
+			log.Println("程序已安全退出")
+			return
 		}
 	}
 }

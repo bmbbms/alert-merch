@@ -4,7 +4,7 @@ metadata:
   name: oracle-secret
 type: Opaque
 stringData:
-  dsn: "your_user/your_password@your_host:1521/your_service"  # ← 替换成实际 Oracle DSN
+  dsn: "query_user/Query_User#20170728@10.0.51.80:1521/merchmgt"  # ← 替换成实际 Oracle DSN
 ---
 apiVersion: v1
 kind: Secret
@@ -12,4 +12,6 @@ metadata:
   name: wecom-secret
 type: Opaque
 stringData:
-  webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" 
+  webhook: "http://qyapi.weixin.qq.com:4430/cgi-bin/webhook/send?key=3725c51f-3c44-4dde-8617-8681c257d570"
+  webhook2: "http://qyapi.weixin.qq.com:4430/cgi-bin/webhook/send?key=3725c51f-3c44-4dde-8617-8681c257d570"
+  webhook3: "http://qyapi.weixin.qq.com:4430/cgi-bin/webhook/send?key=f81054b6-b7fe-4d73-afcc-d317e4e8f5cd"
