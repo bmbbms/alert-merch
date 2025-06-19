@@ -234,7 +234,7 @@ func checkTasks(ctx context.Context) {
 
 	log.Printf("开始查询任务:\n")
 	query := `
-		SELECT TASK_ID, CREATE_TIME, 
+		SELECT PROC_ID, CREATE_TIME, 
 		       CASE WHEN ASSIGNEE IS NULL AND ASSIGNEE_ID IS NULL THEN 'unclaimed' ELSE 'unfinished' END as TASK_STATUS
 		FROM FLOWABLE_USER.T_CURRENT_TASK
 		WHERE 
