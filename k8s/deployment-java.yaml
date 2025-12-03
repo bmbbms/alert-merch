@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-merch-java
+  namespace: monitoring
+  labels:
+    app: alert-merch-java
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-merch-java
+  template:
+    metadata:
+      labels:
+        app: alert-merch-java
+    spec:
+      containers:
+      - name: alert-merch-java
+        image: registry.jlpay.com/middleware/sre/alert-merch-java:v1.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ORACLE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: alert-merch-secret
+              key: oracle-dsn
+        - name: WECOM_WEBHOOK
+          valueFrom:
+            secretKeyRef:
+              name: alert-merch-secret
+              key: wecom-webhook
+        - name: WECOM_WEBHOOK2
+          valueFrom:
+            secretKeyRef:
+              name: alert-merch-secret
+              key: wecom-webhook2
+        - name: WECOM_WEBHOOK3
+          valueFrom:
+            secretKeyRef:
+              name: alert-merch-secret
+              key: wecom-webhook3
+        - name: TASK_TIMEOUT_MINUTES
+          value: "3"
+        - name: CHECK_INTERVAL_SECONDS
+          value: "60"
+        - name: UNFINISHED_TIMEOUT_MINUTES
+          value: "10"
+        - name: HEALTH_PORT
+          value: "8080"
+        - name: PERSIST_PATH
+          value: "/app/data"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      nodeSelector:
+        oteltype: loadbalancer
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: alert-merch-data

@@ -1,0 +1,87 @@
+server:
+  port: ${HEALTH_PORT:8080}
+
+spring:
+  application:
+    name: alert-merch
+  
+  datasource:
+#    url: ${OCEANBASE_JDBC_URL:jdbc:oceanbase:loadbalance://@(NET_SERVICE_NAME=(DESCRIPTION=(OBLB=ON)(OBLB_RETRY_ALL_DOWNS=20)(OBLB_BLACKLIST=(REMOVE_STRATEGY=((NAME=TIMEOUT)(TIMEOUT=100)))(APPEND_STRATEGY=((NAME=RETRYDURATION)(RETRYTIMES=3)(DURATION=10000))))(ADDRESS_LIST=(OBLB_STRATEGY=SERVERAFFINITY)(ADDRESS=(PROTOCOL=tcp)(HOST=ob-ngproxy-m-1.host)(PORT=2883))(WEIGHT=1))(ADDRESS=(PROTOCOL=tcp)(HOST=ob-ngproxy-m-2.host)(PORT=2883))(WEIGHT=1)))(CONNECT_DATA=(SERVICE_NAME=DEV_FLOWABLE_USER))))?useUnicode=true&characterEncoding=utf-8&useCursorFetch=true&serverTimezone=Asia/Shanghai&compatibleOjdbcVersion=8&useCompatibleMetadata=True&useOraclePrepareExecute=true&useServerPrepStmts=true&usePieceData=true}
+#    username: ${OCEANBASE_USERNAME:DEV_FLOWABLE_USER@common#obaarch:1683858802}
+#    password: ${OCEANBASE_PASSWORD:Flowable#aO*u4w05c8+}
+    url: ${OCEANBASE_JDBC_URL:jdbc:oceanbase:loadbalance://@(NET_SERVICE_NAME=(DESCRIPTION=(OBLB=ON)(OBLB_RETRY_ALL_DOWNS=20)(OBLB_BLACKLIST=(REMOVE_STRATEGY=((NAME=TIMEOUT)(TIMEOUT=100)))(APPEND_STRATEGY=((NAME=RETRYDURATION)(RETRYTIMES=3)(DURATION=10000))))(ADDRESS_LIST=(OBLB_STRATEGY=SERVERAFFINITY)(ADDRESS=(PROTOCOL=tcp)(HOST=ob-lbproxy-m1.host)(PORT=2883))(WEIGHT=1))(ADDRESS=(PROTOCOL=tcp)(HOST=ob-lbproxy-m2.host)(PORT=2883))(WEIGHT=1)))(CONNECT_DATA=(SERVICE_NAME=FLOWABLE_USER))))?useUnicode=true&characterEncoding=utf-8&useCursorFetch=true&serverTimezone=Asia/Shanghai&compatibleOjdbcVersion=8&useCompatibleMetadata=True&useOraclePrepareExecute=true&useServerPrepStmts=true&usePieceData=true}
+    username: ${OCEANBASE_USERNAME:FLOWABLE_USER@common#obcluster_s:1692257968}
+    password: ${OCEANBASE_PASSWORD:Flowable#p4J0*aIe3M1}
+    driver-class-name: com.oceanbase.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 1800000
+      max-lifetime: 3600000
+      connection-test-query: SELECT 1 FROM DUAL
+      validation-timeout: 5000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.Oracle12cDialect
+        format_sql: true
+
+  # MyBatis配置
+  mybatis:
+    mapper-locations: classpath:mapper/*.xml
+    type-aliases-package: com.alert.merch.model
+    configuration:
+      map-underscore-to-camel-case: true
+      log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+logging:
+  level:
+    com.alert.merch: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Actuator配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: always
+  health:
+    db:
+      enabled: true
+    defaults:
+      enabled: true
+
+app:
+  task:
+    timeout-minutes: ${TASK_TIMEOUT_MINUTES:3}
+    check-interval-seconds: ${CHECK_INTERVAL_SECONDS:60}
+    unfinished-timeout-minutes: ${UNFINISHED_TIMEOUT_MINUTES:10}
+  
+  wecom:
+    webhook: ${WECOM_WEBHOOK:}
+    webhook2: ${WECOM_WEBHOOK2:}
+    webhook3: ${WECOM_WEBHOOK3:}
+  
+  persist:
+    path: ${PERSIST_PATH:.}
+
+

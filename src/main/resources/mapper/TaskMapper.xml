@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.alert.merch.mapper.TaskMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="TaskInfoResultMap" type="com.alert.merch.model.TaskInfo">
+        <id column="PROC_ID" property="taskId" jdbcType="VARCHAR"/>
+        <result column="CREATE_TIME" property="createTime" jdbcType="TIMESTAMP"/>
+        <result column="TASK_STATUS" property="type" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 查询超时任务 -->
+    <select id="selectTimeoutTasks" resultMap="TaskInfoResultMap">
+        SELECT 
+            PROC_ID, 
+            CREATE_TIME, 
+            CASE 
+                WHEN ASSIGNEE IS NULL AND ASSIGNEE_ID IS NULL THEN 'unclaimed' 
+                ELSE 'unfinished' 
+            END as TASK_STATUS
+        FROM T_CURRENT_TASK
+        WHERE 
+            CREATE_TIME >= TRUNC(SYSDATE) - #{days}
+            AND PROC_KEY = 'ACT_MERCH_ACCESS_REGISTER'
+            AND TASK_KEY IN ('LICENSE_MASTER_NEW_CHECK_TASK','PERSON_MASTER_NEW_CHECK_TASK')
+    </select>
+
+    <!-- 查询当天任务 -->
+    <select id="selectTodayTasks" resultMap="TaskInfoResultMap">
+        SELECT 
+            PROC_ID, 
+            CREATE_TIME, 
+            CASE 
+                WHEN ASSIGNEE IS NULL AND ASSIGNEE_ID IS NULL THEN 'unclaimed' 
+                ELSE 'unfinished' 
+            END as TASK_STATUS
+        FROM T_CURRENT_TASK
+        WHERE 
+            CREATE_TIME >= TRUNC(SYSDATE)
+            AND PROC_KEY = #{procKey}
+            AND TASK_KEY IN
+            <foreach collection="taskKeys" item="taskKey" open="(" separator="," close=")">
+                #{taskKey}
+            </foreach>
+    </select>
+
+    <!-- 根据任务状态查询任务 -->
+    <select id="selectTasksByStatus" resultMap="TaskInfoResultMap">
+        SELECT 
+            PROC_ID, 
+            CREATE_TIME, 
+            CASE 
+                WHEN ASSIGNEE IS NULL AND ASSIGNEE_ID IS NULL THEN 'unclaimed' 
+                ELSE 'unfinished' 
+            END as TASK_STATUS
+        FROM T_CURRENT_TASK
+        WHERE 
+            CREATE_TIME >= TRUNC(SYSDATE) - #{days}
+            AND PROC_KEY = #{procKey}
+            AND TASK_KEY IN
+            <foreach collection="taskKeys" item="taskKey" open="(" separator="," close=")">
+                #{taskKey}
+            </foreach>
+    </select>
+
+</mapper>

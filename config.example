@@ -1,0 +1,31 @@
+# 商户入网审核流程监控系统配置示例
+# 复制此文件为 .env 并根据实际情况修改
+
+# OceanBase数据库连接配置
+# 使用OceanBase JDBC驱动和负载均衡配置
+OCEANBASE_JDBC_URL=jdbc:oceanbase:loadbalance://@(NET_SERVICE_NAME=(DESCRIPTION=(OBLB=ON)(OBLB_RETRY_ALL_DOWNS=20)(OBLB_BLACKLIST=(REMOVE_STRATEGY=((NAME=TIMEOUT)(TIMEOUT=100)))(APPEND_STRATEGY=((NAME=RETRYDURATION)(RETRYTIMES=3)(DURATION=10000))))(ADDRESS_LIST=(OBLB_STRATEGY=SERVERAFFINITY)(ADDRESS=(PROTOCOL=tcp)(HOST=ob-lbproxy-m1.host)(PORT=2883))(WEIGHT=1)(ADDRESS=(PROTOCOL=tcp)(HOST=ob-lbproxy-m2.host)(PORT=2883))(WEIGHT=1)))(CONNECT_DATA=(SERVICE_NAME=SCHEDULER_USER))))&compatibleOjdbcVersion=8
+OCEANBASE_USERNAME=SCHEDULER_USER@common#obcluster_s:1692257968
+OCEANBASE_PASSWORD=$ENCks9dcjFJ5wOwkjsm9KRPWXMLp6U=
+
+# 企业微信机器人Webhook地址
+WECOM_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-webhook-key1
+WECOM_WEBHOOK2=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-webhook-key2
+WECOM_WEBHOOK3=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-webhook-key3
+
+# 任务超时配置（分钟）
+TASK_TIMEOUT_MINUTES=3
+UNFINISHED_TIMEOUT_MINUTES=10
+
+# 检查间隔（秒）
+CHECK_INTERVAL_SECONDS=60
+
+# 健康检查端口
+HEALTH_PORT=8080
+
+# 持久化文件存储路径
+PERSIST_PATH=./data
+
+# Jackson配置（可选，使用默认配置）
+# 日期时间格式：yyyy-MM-dd HH:mm:ss
+# 时区：Asia/Shanghai
+ 
