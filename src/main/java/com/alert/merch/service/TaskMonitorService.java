@@ -38,6 +38,9 @@ public class TaskMonitorService {
     @Autowired
     private WeComAlertService weComAlertService;
     
+    @Autowired
+    private MetricsService metricsService;
+    
     // 告警记录，key为任务ID，value为最后告警时间
     private final Map<String, LocalDateTime> alertRecords = new ConcurrentHashMap<>();
     
@@ -57,6 +60,12 @@ public class TaskMonitorService {
     
     // 每日入网人数统计（日期 -> 入网人数），用于保存历史统计
     private final Map<String, Integer> dailyTaskStats = new ConcurrentHashMap<>();
+    
+    // 已统计的未领取任务ID集合（用于Prometheus指标，避免重复统计）
+    private final Set<String> countedUnclaimedTaskIds = new HashSet<>();
+    
+    // 已统计的未完成任务ID集合（用于Prometheus指标，避免重复统计）
+    private final Set<String> countedUnfinishedTaskIds = new HashSet<>();
     
     /**
      * 定时检查任务状态
@@ -135,6 +144,9 @@ public class TaskMonitorService {
                     now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")), 
                     newTaskCount, todayTaskCount);
                 lastStatsTime = now;
+                
+                // 更新Prometheus指标：新增入网总数
+                metricsService.incrementTaskTotal(newTaskCount);
             } else {
                 log.debug("【入网人数统计】当前时间: {}, 累计入网人数: {} 人（无新增）", 
                     now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")), 
@@ -177,6 +189,13 @@ public class TaskMonitorService {
                 // 记录超时未分配的任务
                 timeoutTasksService.saveTimeoutTask(task);
                 unclaimedTasks.add(task);
+                
+                // 更新Prometheus指标：未领取总数（只统计一次）
+                String taskId = task.getTaskId();
+                if (!countedUnclaimedTaskIds.contains(taskId)) {
+                    countedUnclaimedTaskIds.add(taskId);
+                    metricsService.incrementUnclaimedTotal(1);
+                }
             } else if ("unfinished".equals(task.getType()) && 
                      now.isAfter(task.getCreateTime().plusMinutes(unfinishedTimeoutMinutes))) {
                 log.info("发现超时未完成任务: ID={}, 超时时间={}分钟", 
@@ -184,6 +203,13 @@ public class TaskMonitorService {
                 // 记录超时未完成的任务
                 timeoutTasksService.saveTimeoutFinishTask(task);
                 unfinishedTasks.add(task);
+                
+                // 更新Prometheus指标：未完成总数（只统计一次）
+                String taskId = task.getTaskId();
+                if (!countedUnfinishedTaskIds.contains(taskId)) {
+                    countedUnfinishedTaskIds.add(taskId);
+                    metricsService.incrementUnfinishedTotal(1);
+                }
             } else {
                 log.info("任务未超时: ID={}, 状态={}", task.getTaskId(), task.getType());
             }

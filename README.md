@@ -139,6 +139,7 @@ kubectl apply -f k8s/service-java.yaml
 - `/actuator/health/readiness` - 就绪检查
 - `/actuator/info` - 应用信息
 - `/actuator/metrics` - 应用指标
+- `/actuator/prometheus` - Prometheus指标（用于监控系统集成）
 
 #### 自定义API端点
 - `/api/status` - 应用状态信息（包含任务统计和配置信息）
@@ -147,6 +148,54 @@ kubectl apply -f k8s/service-java.yaml
 - **Spring Boot Actuator** - 提供标准的健康检查端点
 - **数据库连接检查** - 验证OceanBase连接状态
 - **应用状态检查** - 检查超时任务服务运行状态
+
+### Prometheus指标
+
+应用提供以下Prometheus指标，可通过 `/actuator/prometheus` 端点获取：
+
+| 指标名称 | 类型 | 说明 |
+|---------|------|------|
+| `task_total` | Counter | 新增入网总数（累计值，根据task_id去重统计） |
+| `unclaimed_total` | Counter | 未领取总数（累计值，统计所有发现的未领取超时任务） |
+| `unfinished_total` | Counter | 未完成总数（累计值，统计所有发现的未完成超时任务） |
+
+#### 指标说明
+
+- **task_total**: 统计所有新增的入网任务，每个task_id只统计一次，避免重复计数
+- **unclaimed_total**: 统计所有发现的未领取超时任务，每个task_id只统计一次
+- **unfinished_total**: 统计所有发现的未完成超时任务，每个task_id只统计一次
+
+#### 使用示例
+
+```bash
+# 获取Prometheus指标
+curl http://localhost:8080/actuator/prometheus
+
+# 在Prometheus配置中添加抓取目标
+scrape_configs:
+  - job_name: 'alert-merch'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['localhost:8080']
+```
+
+#### Grafana仪表板示例
+
+可以使用以下PromQL查询来创建Grafana仪表板：
+
+```promql
+# 新增入网总数
+task_total
+
+# 未领取总数
+unclaimed_total
+
+# 未完成总数
+unfinished_total
+
+# 每小时新增入网数（速率）
+rate(task_total[1h]) * 3600
+```
 
 ## 注意事项
 
